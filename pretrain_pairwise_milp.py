@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
+import sys
 
 from drone_dispatch_env.config import Config
 from drone_dispatch_env.env_dispatch import DroneDispatchEnv
@@ -10,8 +11,10 @@ from pairwise_features import build_pairwise_features
 from pairwise_model import PairwisePolicy
 
 
-torch.manual_seed(0)
-np.random.seed(0)
+train_seed = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+
+torch.manual_seed(train_seed)
+np.random.seed(train_seed)
 
 config = Config.from_yaml("configs/eval_standard.yaml")
 env = DroneDispatchEnv(config)
@@ -22,7 +25,10 @@ charge_data = []
 mask_data = []
 action_data = []
 
-for seed in range(75):
+for collected, seed in enumerate(
+    range(train_seed * 75, (train_seed + 1) * 75),
+    start=1
+):
     obs, info = env.reset(seed=seed)
 
     terminated = False
@@ -39,8 +45,8 @@ for seed in range(75):
         action_data.append(action)
 
         obs, reward, terminated, truncated, info = env.step(action)
-    if (seed + 1) % 5 == 0:
-        print(f"Collected seed {seed + 1}/75")
+    if collected % 5 == 0:
+        print(f"Collected seed {collected}/75")
 
 pair_data = torch.tensor(np.array(pair_data), dtype=torch.float32)
 charge_data = torch.tensor(np.array(charge_data), dtype=torch.float32)
@@ -91,6 +97,6 @@ for epoch in range(epochs):
         f"Accuracy: {correct / total:.4f}"
     )
 
-torch.save(model.state_dict(), "pairwise_milp_bc.pt")
+torch.save(model.state_dict(), f"pairwise_milp_seed{train_seed}.pt")
 
 print("Pairwise pretraining finished.")
