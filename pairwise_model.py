@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class PairwisePolicy(nn.Module):
-    def __init__(self, feature_dim=11):
+    def __init__(self, feature_dim=8):
         super().__init__()
 
         self.scorer = nn.Sequential(
