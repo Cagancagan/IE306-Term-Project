@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, state_dim=581, action_dim=169):
+    def __init__(self, state_dim=741, action_dim=169):
         super().__init__()
 
         self.shared = nn.Sequential(

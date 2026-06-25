@@ -11,7 +11,7 @@ obs, info = env.reset(seed=0)
 state = flatten_obs(obs)
 
 print("State shape:", state.shape)
-print("Expected state size: 581")
+print("Expected state size: 741")
 print("First valid action count:", int(obs["action_mask"].sum()))
 
 rng = np.random.default_rng(0)
@@ -31,5 +31,3 @@ while not terminated and not truncated:
 print("Episode finished.")
 print("Decision steps:", steps)
 print("Total reward:", total_reward)
-print("Delivered:", info.get("n_delivered"))
-print("Dropped:", info.get("n_dropped"))
