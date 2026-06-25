@@ -38,7 +38,7 @@ def build_pairwise_features(obs):
     drones = obs["drones"]
     orders = obs["orders"]
 
-    pair_features = np.zeros((1, 160, 8), dtype=np.float32)
+    pair_features = np.zeros((1, 160, 11), dtype=np.float32)
     charge_features = np.zeros((1, 8, 5), dtype=np.float32)
 
     for drone in range(8):
@@ -51,16 +51,32 @@ def build_pairwise_features(obs):
         ], dtype=np.float32)
 
     for slot in range(20):
-        field = _distance_field(obs["grid"], orders[slot, 0:2])
+        pickup_x = int(orders[slot, 0])
+        pickup_y = int(orders[slot, 1])
+        dropoff_x = int(orders[slot, 2])
+        dropoff_y = int(orders[slot, 3])
+
+        pickup_field = _distance_field(
+            obs["grid"],
+            (pickup_x, pickup_y)
+        )
+
+        pickup_to_dropoff = pickup_field[dropoff_x, dropoff_y]
+
+        if not np.isfinite(pickup_to_dropoff):
+            pickup_to_dropoff = 40.0
 
         for drone in range(8):
             x = int(drones[drone, 0])
             y = int(drones[drone, 1])
 
-            distance = field[x, y]
+            drone_to_pickup = pickup_field[x, y]
 
-            if not np.isfinite(distance):
-                distance = 40.0
+            if not np.isfinite(drone_to_pickup):
+                drone_to_pickup = 40.0
+
+            total_distance = drone_to_pickup + pickup_to_dropoff
+            battery_margin = drones[drone, 2] - total_distance / 40.0
 
             action = drone * 20 + slot
 
@@ -72,7 +88,10 @@ def build_pairwise_features(obs):
                 orders[slot, 2] / 20.0,
                 orders[slot, 3] / 20.0,
                 orders[slot, 4] / 500.0,
-                distance / 40.0
+                drone_to_pickup / 40.0,
+                pickup_to_dropoff / 40.0,
+                total_distance / 80.0,
+                battery_margin
             ], dtype=np.float32)
 
     return pair_features, charge_features

@@ -22,6 +22,7 @@ mask = torch.tensor(obs["action_mask"], dtype=torch.bool).unsqueeze(0)
 masked_scores = scores.masked_fill(~mask, -1e9)
 
 print("Pair feature shape:", pair_tensor.shape)
+print("Expected pair feature shape: torch.Size([1, 160, 11])")
 print("Charge feature shape:", charge_tensor.shape)
 print("Score shape:", scores.shape)
 print("Valid actions:", int(mask.sum()))
