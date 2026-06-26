@@ -10,7 +10,7 @@ from drone_dispatch_env.config import Config
 
 
 StateKey = Tuple[int, int, int, int, int]
-ModelEntry = Tuple[StateKey, float, bool]
+ModelEntry = Tuple[StateKey, float, bool, np.ndarray]
 
 
 @dataclass
@@ -130,10 +130,76 @@ class DynaQPlanner:
 
         return int(np.argmax(q_values))
 
+    def _q_update(
+        self,
+        state: StateKey,
+        action: int,
+        reward: float,
+        next_state: StateKey,
+        next_valid_actions: np.ndarray,
+        done: bool,
+    ) -> None:
+        """One tabular Q-learning update."""
+        alpha = self.dynaq_cfg.alpha
+        gamma = self.dynaq_cfg.gamma
+
+        current_q = float(self.q[state][action])
+
+        if done or len(next_valid_actions) == 0:
+            target = reward
+        else:
+            next_q = self.q[next_state][next_valid_actions]
+            target = reward + gamma * float(np.max(next_q))
+
+        self.q[state][action] = current_q + alpha * (target - current_q)
+
     def update(self, obs, action: int, reward: float, next_obs, done: bool) -> None:
         """
-        Placeholder for real Q-learning and Dyna planning updates.
+        Learn from one real environment transition, then perform Dyna-Q
+        planning updates using transitions stored in the learned model.
         """
         state = self.encode_state(obs)
         next_state = self.encode_state(next_obs)
-        self.model[(state, int(action))] = (next_state, float(reward), bool(done))
+        next_valid_actions = self.valid_actions(next_obs)
+
+        # 1. Learn from the real transition.
+        self._q_update(
+            state=state,
+            action=int(action),
+            reward=float(reward),
+            next_state=next_state,
+            next_valid_actions=next_valid_actions,
+            done=bool(done),
+        )
+
+        # 2. Save the observed transition in the learned model.
+        self.model[(state, int(action))] = (
+            next_state,
+            float(reward),
+            bool(done),
+            next_valid_actions.copy(),
+        )
+
+        # 3. Replay past transitions as planning updates.
+        model_keys = list(self.model.keys())
+
+        for _ in range(self.dynaq_cfg.planning_steps):
+            sampled_state, sampled_action = model_keys[
+                self.rng.integers(len(model_keys))
+            ]
+
+            (
+                sampled_next_state,
+                sampled_reward,
+                sampled_done,
+                sampled_next_valid_actions,
+            ) = self.model[(sampled_state, sampled_action)]
+
+            self._q_update(
+                state=sampled_state,
+                action=sampled_action,
+                reward=sampled_reward,
+                next_state=sampled_next_state,
+                next_valid_actions=sampled_next_valid_actions,
+                done=sampled_done,
+            )
