@@ -1,0 +1,14 @@
+Held-out evaluation seeds: 300–319
+
+MILP-guided pairwise policy
+cost_per_order: 2.9684 ± 0.5976
+success_rate: 0.9052 ± 0.0171
+ontime_rate: 0.9409 ± 0.0020
+energy_per_order: 0.2210 ± 0.0009
+depletion_events: 1.9833 ± 0.3472
+n_delivered: 123.5500 ± 2.6574
+n_dropped: 13.5000 ± 2.3836
+episode_return: 1482.6644 ± 89.5978
+
+Greedy nearest baseline
+cost_per_order: 3.9810
