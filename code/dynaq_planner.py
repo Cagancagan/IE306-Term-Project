@@ -128,7 +128,10 @@ class DynaQPlanner:
         invalid[valid] = False
         q_values[invalid] = -np.inf
 
-        return int(np.argmax(q_values))
+        best_value = np.max(q_values)
+        best_actions = np.flatnonzero(q_values == best_value)
+
+        return int(self.rng.choice(best_actions))
 
     def _q_update(
         self,
