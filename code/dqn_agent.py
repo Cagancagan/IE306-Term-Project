@@ -40,7 +40,7 @@ class DQNAgent:
     def __init__(self, config):
         self.obs_dim = config.get("obs_dim", 20)
         self.action_dim = config.get("action_dim", 10)
-        self.state_key = config.get("state_key", "observation")  # Ajan artık dinamik anahtarı biliyor
+        self.state_key = config.get("state_key", "observation")
 
         self.q_net = QNetwork(self.obs_dim, self.action_dim)
         self.target_net = QNetwork(self.obs_dim, self.action_dim)
@@ -56,7 +56,8 @@ class DQNAgent:
         self.epsilon_decay = 0.995
 
     def act(self, obs):
-        state = obs[self.state_key]  # Dinamik anahtarla veriyi çek
+        # Ajan karar alırken de veriyi düz bir sıraya diziyoruz
+        state = np.array(obs[self.state_key]).flatten()
         action_mask = obs["action_mask"]
         valid_actions = np.where(action_mask == 1)[0]
 
