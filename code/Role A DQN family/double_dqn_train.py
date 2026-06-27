@@ -8,7 +8,7 @@ import numpy as np
 from double_dqn_agent import DoubleDQNAgent
 
 # 1. Ayarları Yükle
-with open("../../configs/dqn.yaml", "r") as f:
+with open("../../configs/double_dqn.yaml", "r") as f:
     config = yaml.safe_load(f)
 
 # 2. Simülatörü Başlat ve Veri Yapısını Çöz
