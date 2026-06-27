@@ -1,3 +1,4 @@
+import sys
 import gymnasium as gym
 import drone_dispatch_env
 import yaml
@@ -6,11 +7,13 @@ import csv
 import numpy as np
 from dueling_dqn_agent import DuelingDQNAgent
 
-with open("../../configs/dqn.yaml", "r") as f:
+with open("../../configs/duel_dqn.yaml", "r") as f:
     config = yaml.safe_load(f)
 
+my_seed = int(sys.argv[1]) if len(sys.argv) > 1 else 42
+
 env = gym.make(config["env_id"])
-obs_sample, info_sample = env.reset(seed=44)
+obs_sample, info_sample = env.reset(seed=my_seed)
 
 state_key = [k for k in obs_sample.keys() if k != "action_mask"][0]
 print(f"Çevreden gelen asıl veri anahtarı bulundu: '{state_key}'")
@@ -48,9 +51,9 @@ for episode in range(config["total_episodes"]):
         print(f"Bölüm: {episode} | Toplam Ödül: {total_reward:.2f}")
 
 # Ağırlıkların ve logların kaydedilmesi
-torch.save(agent.q_net.state_dict(), "../../weights/dueling_dqn.pt")
+torch.save(agent.q_net.state_dict(), f"../../weights/dueling_dqn_seed{my_seed}.pt")
 
-with open("../../logs/dueling_dqn_seed44.csv", "w", newline="") as f:
+with open(f"../../logs/dueling_dqn_seed{my_seed}.csv", "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["episode", "reward", "cost_per_order"])
     writer.writerows(logs)
