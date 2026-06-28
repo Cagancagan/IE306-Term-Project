@@ -73,7 +73,7 @@ class DuelingDQNAgent:
         self.gamma = config.get("gamma", 0.99)
         self.epsilon = 1.0
         self.epsilon_min = 0.05
-        self.epsilon_decay = 0.995
+        self.epsilon_decay = 0.998
 
     def act(self, obs):
         state = np.array(obs[self.state_key]).flatten()

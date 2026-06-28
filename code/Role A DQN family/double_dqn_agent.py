@@ -54,7 +54,7 @@ class DoubleDQNAgent:
         self.gamma = config.get("gamma", 0.99)
         self.epsilon = 1.0
         self.epsilon_min = 0.05
-        self.epsilon_decay = 0.995
+        self.epsilon_decay = 0.998
 
     def act(self, obs):
         state = np.array(obs[self.state_key]).flatten()
@@ -99,7 +99,7 @@ class DoubleDQNAgent:
 
             target_q_values = rewards + (self.gamma * next_q_values * (1 - dones))
 
-        loss = nn.MSELoss()(q_values, target_q_values)
+        loss = nn.SmoothL1Loss()(q_values, target_q_values)
 
         self.optimizer.zero_grad()
         loss.backward()
