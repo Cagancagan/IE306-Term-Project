@@ -197,7 +197,8 @@ class DQNPolicy:
                  lr: float = 5e-4, gamma: float = 0.99, batch_size: int = 64,
                  buffer_size: int = 100_000, tau: float = 0.005, hidden: int = 256,
                  epsilon_decay: float = 0.9995, safety_threshold: float = 0.35,
-                 mission_safety: bool = True, battery_reserve: float = 0.15):
+                 mission_safety: bool = True, battery_reserve: float = 0.15,
+                 use_target_network: bool = True):
         assert algo in {"dqn", "double", "dueling"}
         self.cfg = cfg
         self.algo = algo
@@ -212,6 +213,7 @@ class DQNPolicy:
         self.safety_threshold = safety_threshold
         self.mission_safety = mission_safety
         self.battery_reserve = battery_reserve
+        self.use_target_network = use_target_network
         dueling = algo == "dueling"
         self.q_net = QNetwork(obs_dim, action_dim, hidden=hidden, dueling=dueling)
         self.target_net = QNetwork(obs_dim, action_dim, hidden=hidden, dueling=dueling)
@@ -242,29 +244,46 @@ class DQNPolicy:
     def learn(self) -> float | None:
         if len(self.memory) < self.batch_size:
             return None
+
         states, actions, rewards, next_states, dones, next_masks = self.memory.sample(self.batch_size)
+
         q_sa = self.q_net(states).gather(1, actions)
+
         with torch.no_grad():
+            # Ablation switch:
+            # ON  -> standard DQN-style stable target network
+            # OFF -> online network is also used for the bootstrap target
+            target_net = self.target_net if self.use_target_network else self.q_net
+
             if self.algo == "dqn":
-                next_q = self.target_net(next_states).masked_fill(~next_masks, -1e9)
+                next_q = target_net(next_states).masked_fill(~next_masks, -1e9)
                 next_q_max = next_q.max(dim=1, keepdim=True).values
             else:
+                # Double/Dueling style:
+                # action selection from online q_net, action evaluation from target_net.
+                # If target network is disabled, both use q_net.
                 online_next_q = self.q_net(next_states).masked_fill(~next_masks, -1e9)
                 next_actions = online_next_q.argmax(dim=1, keepdim=True)
-                next_q_max = self.target_net(next_states).gather(1, next_actions)
+                next_q_max = target_net(next_states).gather(1, next_actions)
+
             target = rewards + self.gamma * next_q_max * (1.0 - dones)
+
         loss = nn.SmoothL1Loss()(q_sa, target)
+
         self.optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(self.q_net.parameters(), 10.0)
         self.optimizer.step()
-        with torch.no_grad():
-            for tp, qp in zip(self.target_net.parameters(), self.q_net.parameters()):
-                tp.data.mul_(1.0 - self.tau).add_(self.tau * qp.data)
+
+        if self.use_target_network:
+            with torch.no_grad():
+                for tp, qp in zip(self.target_net.parameters(), self.q_net.parameters()):
+                    tp.data.mul_(1.0 - self.tau).add_(self.tau * qp.data)
+
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
         self.learn_steps += 1
-        return float(loss.item())
 
+        return float(loss.item())
     def save(self, path: str) -> None:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.save({
@@ -277,6 +296,7 @@ class DQNPolicy:
             "safety_threshold": self.safety_threshold,
             "mission_safety": self.mission_safety,
             "battery_reserve": self.battery_reserve,
+            "use_target_network": self.use_target_network,
         }, path)
 
     @classmethod
@@ -291,6 +311,7 @@ class DQNPolicy:
             safety_threshold=ckpt.get("safety_threshold", 0.35),
             mission_safety=ckpt.get("mission_safety", True),
             battery_reserve=ckpt.get("battery_reserve", 0.15),
+            use_target_network=ckpt.get("use_target_network", True),
         )
         agent.q_net.load_state_dict(ckpt["state_dict"])
         agent.target_net.load_state_dict(agent.q_net.state_dict())
@@ -336,6 +357,7 @@ def make_agent(algo: str, seed: int, args) -> Tuple[DQNPolicy, Config]:
         safety_threshold=args.safety_threshold,
         mission_safety=not args.no_mission_safety,
         battery_reserve=args.battery_reserve,
+        use_target_network=not args.no_target_network,
     ), cfg
 
 
@@ -440,6 +462,7 @@ def main():
     tr.add_argument("--epsilon-decay", type=float, default=0.9995)
     tr.add_argument("--safety-threshold", type=float, default=0.35)
     tr.add_argument("--battery-reserve", type=float, default=0.15)
+    tr.add_argument("--no-target-network", action="store_true")
     tr.add_argument("--no-mission-safety", action="store_true")
     tr.add_argument("--print-every", type=int, default=10)
     tr.add_argument("--out", default=None)
