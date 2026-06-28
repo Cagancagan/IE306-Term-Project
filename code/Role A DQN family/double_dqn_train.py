@@ -14,18 +14,19 @@ def flatten_obs(obs_dict):
     drones = np.array(obs_dict["drones"]).flatten()
     orders = np.array(obs_dict["orders"]).flatten()
     time = np.array(obs_dict["time"]).flatten()
-    return np.concatenate([drones, orders, time])
+    grid = np.array(obs_dict["grid"]).flatten()
+    return np.concatenate([drones, orders, time, grid])
 
 with open("../../configs/double_dqn.yaml", "r") as f: config = yaml.safe_load(f)
 my_seed = int(sys.argv[1]) if len(sys.argv) > 1 else 42
 env = gym.make(config["env_id"])
 obs_sample, info_sample = env.reset(seed=my_seed)
 
+agent = DoubleDQNAgent(config)
+agent.memory.buffer.clear()
 sample_state = flatten_obs(obs_sample)
 config["obs_dim"] = len(sample_state)
 config["action_dim"] = env.action_space.n
-
-agent = DoubleDQNAgent(config)
 logs = []
 best_reward = -float('inf')
 

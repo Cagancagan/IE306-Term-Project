@@ -9,8 +9,14 @@ from collections import deque
 class QNetwork(nn.Module):
     def __init__(self, obs_dim, action_dim):
         super(QNetwork, self).__init__()
-        self.net = nn.Sequential(nn.Linear(obs_dim, 128), nn.ReLU(), nn.Linear(128, 128), nn.ReLU(),
-                                 nn.Linear(128, action_dim))
+        # Artık '128' yerine 'obs_dim' kullanıyoruz!
+        self.net = nn.Sequential(
+            nn.Linear(obs_dim, 256),  # Giriş doğrudan obs_dim
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, action_dim)
+        )
 
     def forward(self, x): return self.net(x)
 
