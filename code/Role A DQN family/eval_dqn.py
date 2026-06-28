@@ -83,3 +83,32 @@ print("="*35)
 for name, score in results.items():
     print(f"{name:<15} : {score:.2f}")
 print("="*35)
+
+# 5. İSTİKRAR SINAVI: Tek seed yerine 10 farklı seed ile ortalama al
+print("\n--- İSTİKRAR SINAVI: 10 Farklı Seed ile Ortalama Skor ---")
+import statistics
+
+
+def get_robust_score(agent, weight_path, num_seeds=10):
+    scores = []
+    for s in range(num_seeds):
+        # Her seed için ajanı resetle ve performansı ölç
+        agent.q_net.load_state_dict(torch.load(weight_path))
+        agent.epsilon = 0.0
+
+        obs, _ = env.reset(seed=s)  # Farklı senaryolar
+        done = False
+        total_r = 0
+        while not done:
+            action = agent.act(obs)
+            obs, r, term, trunc, _ = env.step(action)
+            done = term or trunc
+            total_r += r
+        scores.append(total_r)
+    return statistics.mean(scores)
+
+
+# Artık tek skor yerine ortalama skorları bas
+for name, (agent, path) in agents_to_test.items():
+    avg_score = get_robust_score(agent, path)
+    print(f">>> {name} Ortalama Başarı: {avg_score:.2f}")
