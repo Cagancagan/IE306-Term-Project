@@ -26,6 +26,7 @@ config["action_dim"] = env.action_space.n
 # Ajanı başlatıyoruz
 agent = DoubleDQNAgent(config)
 logs = []
+best_reward = -float('inf') # En iyi skoru takip etmek için
 
 # 3. Eğitim Döngüsü
 print(f"Double DQN Eğitimi başlıyor... Toplam {config['total_episodes']} bölüm sürecek.")
@@ -49,6 +50,13 @@ for episode in range(config["total_episodes"]):
         total_reward += reward
 
     logs.append([episode, total_reward, info.get("metrics", {}).get("cost_per_order", 0)])
+
+    # --- CHECKPOINT MANTIĞI: Sadece en iyi skoru yaparsa modeli kaydet ---
+    if total_reward > best_reward:
+        best_reward = total_reward
+        torch.save(agent.q_net.state_dict(), "../../weights/best_double_dqn.pt")
+        print(f"Bölüm {episode}: YENİ REKOR! Skor: {total_reward:.2f} -> Model kaydedildi.")
+
     if episode % 10 == 0:
         print(f"Bölüm: {episode} | Toplam Ödül: {total_reward:.2f}")
 
@@ -60,4 +68,4 @@ with open("../../logs/double_dqn_seed42.csv", "w", newline="") as f:
     writer.writerow(["episode", "reward", "cost_per_order"])
     writer.writerows(logs)
 
-print("Eğitim tamamlandı! Ağırlıklar 'weights/double_dqn.pt' klasörüne kaydedildi.")
+print(f"Eğitim tamamlandı! En iyi model (Skor: {best_reward:.2f}) 'weights/best_double_dqn.pt' olarak kaydedildi.")
