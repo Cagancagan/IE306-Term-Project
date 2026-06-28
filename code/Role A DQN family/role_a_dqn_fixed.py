@@ -63,6 +63,27 @@ def flatten_obs(obs: Dict[str, np.ndarray], cfg: Config) -> np.ndarray:
 def valid_mask(obs: Dict[str, np.ndarray]) -> np.ndarray:
     return np.asarray(obs["action_mask"], dtype=np.float32)
 
+def policy_mask(obs: Dict[str, np.ndarray], cfg: Config, safety_threshold: float = 0.35) -> np.ndarray:
+    """Env action_mask + simple battery-safety rule.
+
+    The env mask says whether an action is legal.
+    This policy mask additionally prevents assigning low-SoC idle drones to new orders.
+    Low-battery idle drones are still allowed to charge or no-op.
+    """
+    mask = valid_mask(obs).copy()
+    drones = np.asarray(obs["drones"], dtype=np.float32)
+
+    if safety_threshold is not None and safety_threshold > 0:
+        for d in range(cfg.n_drones):
+            soc = float(drones[d, 2])
+            if soc < safety_threshold:
+                start = d * cfg.k_max
+                end = start + cfg.k_max
+                mask[start:end] = 0.0
+
+    # no-op should remain available as a fallback
+    mask[cfg.noop_index] = 1.0
+    return mask
 
 class ReplayBuffer:
     def __init__(self, capacity: int):
@@ -117,7 +138,8 @@ class QNetwork(nn.Module):
 class DQNPolicy:
     def __init__(self, cfg: Config, obs_dim: int, action_dim: int, algo: str = "double",
                  lr: float = 5e-4, gamma: float = 0.99, batch_size: int = 64,
-                 buffer_size: int = 100_000, tau: float = 0.005, hidden: int = 256):
+                 buffer_size: int = 100_000, tau: float = 0.005, hidden: int = 256,
+                 epsilon_decay: float = 0.9995, safety_threshold: float = 0.35):
         assert algo in {"dqn", "double", "dueling"}
         self.cfg = cfg
         self.algo = algo
@@ -128,7 +150,8 @@ class DQNPolicy:
         self.tau = tau
         self.epsilon = 1.0
         self.epsilon_min = 0.05
-        self.epsilon_decay = 0.995
+        self.epsilon_decay = epsilon_decay
+        self.safety_threshold = safety_threshold
         dueling = algo == "dueling"
         self.q_net = QNetwork(obs_dim, action_dim, hidden=hidden, dueling=dueling)
         self.target_net = QNetwork(obs_dim, action_dim, hidden=hidden, dueling=dueling)
@@ -138,7 +161,7 @@ class DQNPolicy:
         self.learn_steps = 0
 
     def act(self, obs: Dict[str, np.ndarray]) -> int:
-        mask = valid_mask(obs)
+        mask = policy_mask(obs, self.cfg, self.safety_threshold)
         valid = np.flatnonzero(mask)
         if len(valid) == 0:
             return int(self.cfg.noop_index)
@@ -184,12 +207,21 @@ class DQNPolicy:
             "action_dim": self.action_dim,
             "cfg": asdict(self.cfg),
             "state_dict": self.q_net.state_dict(),
+            "epsilon_decay": self.epsilon_decay,
+            "safety_threshold": self.safety_threshold,
         }, path)
 
     @classmethod
     def load(cls, path: str, cfg: Config):
         ckpt = torch.load(path, map_location="cpu", weights_only=False)
-        agent = cls(cfg, ckpt["obs_dim"], ckpt["action_dim"], algo=ckpt.get("algo", "double"))
+        agent = cls(
+            cfg,
+            ckpt["obs_dim"],
+            ckpt["action_dim"],
+            algo=ckpt.get("algo", "double"),
+            epsilon_decay=ckpt.get("epsilon_decay", 0.9995),
+            safety_threshold=ckpt.get("safety_threshold", 0.35),
+        )
         agent.q_net.load_state_dict(ckpt["state_dict"])
         agent.target_net.load_state_dict(agent.q_net.state_dict())
         agent.epsilon = 0.0
@@ -221,9 +253,18 @@ def make_agent(algo: str, seed: int, args) -> Tuple[DQNPolicy, Config]:
     obs_dim = len(flatten_obs(obs, cfg))
     action_dim = env.action_space.n
     env.close()
-    return DQNPolicy(cfg, obs_dim, action_dim, algo=algo, lr=args.lr, gamma=args.gamma,
-                     batch_size=args.batch_size, buffer_size=args.buffer_size,
-                     tau=args.tau, hidden=args.hidden), cfg
+    return DQNPolicy(
+        cfg, obs_dim, action_dim,
+        algo=algo,
+        lr=args.lr,
+        gamma=args.gamma,
+        batch_size=args.batch_size,
+        buffer_size=args.buffer_size,
+        tau=args.tau,
+        hidden=args.hidden,
+        epsilon_decay=args.epsilon_decay,
+        safety_threshold=args.safety_threshold,
+    ), cfg
 
 
 def train(args) -> None:
@@ -250,7 +291,8 @@ def train(args) -> None:
             done = bool(term or trunc)
             agent.memory.push(
                 flatten_obs(obs, cfg), action, reward,
-                flatten_obs(next_obs, cfg), done, valid_mask(next_obs),
+                flatten_obs(next_obs, cfg), done,
+                policy_mask(next_obs, cfg, agent.safety_threshold),
             )
             loss = agent.learn()
             if loss is not None:
@@ -317,6 +359,8 @@ def main():
     tr.add_argument("--buffer-size", type=int, default=100_000)
     tr.add_argument("--tau", type=float, default=0.005)
     tr.add_argument("--hidden", type=int, default=256)
+    tr.add_argument("--epsilon-decay", type=float, default=0.9995)
+    tr.add_argument("--safety-threshold", type=float, default=0.35)
     tr.add_argument("--print-every", type=int, default=10)
     tr.add_argument("--out", default=None)
     ev = sub.add_parser("eval", parents=[common])
