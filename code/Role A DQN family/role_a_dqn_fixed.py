@@ -188,7 +188,7 @@ class DQNPolicy:
 
     @classmethod
     def load(cls, path: str, cfg: Config):
-        ckpt = torch.load(path, map_location="cpu")
+        ckpt = torch.load(path, map_location="cpu", weights_only=False)
         agent = cls(cfg, ckpt["obs_dim"], ckpt["action_dim"], algo=ckpt.get("algo", "double"))
         agent.q_net.load_state_dict(ckpt["state_dict"])
         agent.target_net.load_state_dict(agent.q_net.state_dict())
