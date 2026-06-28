@@ -63,25 +63,82 @@ def flatten_obs(obs: Dict[str, np.ndarray], cfg: Config) -> np.ndarray:
 def valid_mask(obs: Dict[str, np.ndarray]) -> np.ndarray:
     return np.asarray(obs["action_mask"], dtype=np.float32)
 
-def policy_mask(obs: Dict[str, np.ndarray], cfg: Config, safety_threshold: float = 0.35) -> np.ndarray:
-    """Env action_mask + simple battery-safety rule.
+def manhattan(a: np.ndarray, b: np.ndarray) -> float:
+    return float(abs(float(a[0]) - float(b[0])) + abs(float(a[1]) - float(b[1])))
 
-    The env mask says whether an action is legal.
-    This policy mask additionally prevents assigning low-SoC idle drones to new orders.
-    Low-battery idle drones are still allowed to charge or no-op.
+
+def nearest_hub_distance(pos: np.ndarray, grid: np.ndarray) -> float:
+    hubs = np.argwhere(grid == 3)
+    if len(hubs) == 0:
+        return 0.0
+
+    # np.argwhere returns [row, col]. In this simulator x/y are used as grid-like coordinates.
+    return min(
+        abs(float(pos[0]) - float(hub[0])) + abs(float(pos[1]) - float(hub[1]))
+        for hub in hubs
+    )
+
+
+def policy_mask(
+    obs: Dict[str, np.ndarray],
+    cfg: Config,
+    safety_threshold: float = 0.35,
+    mission_safety: bool = True,
+    battery_reserve: float = 0.15,
+    e_move: float = 0.01,
+) -> np.ndarray:
+    """Env action_mask + battery-safety rules.
+
+    Rule 1:
+        Low-SoC idle drones are not allowed to accept new assignments.
+
+    Rule 2:
+        If enabled, an assignment is allowed only when the drone appears to have
+        enough battery for:
+            drone -> pickup -> dropoff -> nearest charger
+        plus a reserve margin.
+
+    This is a conservative safety prior, not a simulator rule.
     """
     mask = valid_mask(obs).copy()
     drones = np.asarray(obs["drones"], dtype=np.float32)
+    orders = np.asarray(obs["orders"], dtype=np.float32)
+    grid = np.asarray(obs["grid"])
 
-    if safety_threshold is not None and safety_threshold > 0:
-        for d in range(cfg.n_drones):
-            soc = float(drones[d, 2])
-            if soc < safety_threshold:
-                start = d * cfg.k_max
-                end = start + cfg.k_max
-                mask[start:end] = 0.0
+    for d in range(cfg.n_drones):
+        soc = float(drones[d, 2])
+        drone_pos = drones[d, 0:2]
 
-    # no-op should remain available as a fallback
+        # Rule 1: simple low-battery threshold.
+        if safety_threshold is not None and safety_threshold > 0 and soc < safety_threshold:
+            start = d * cfg.k_max
+            end = start + cfg.k_max
+            mask[start:end] = 0.0
+            continue
+
+        # Rule 2: distance-aware mission safety.
+        if mission_safety:
+            for k in range(cfg.k_max):
+                action = d * cfg.k_max + k
+
+                # If env says the action is already invalid, leave it invalid.
+                if mask[action] <= 0:
+                    continue
+
+                order = orders[k]
+                pickup = order[0:2]
+                dropoff = order[2:4]
+
+                dist_to_pickup = manhattan(drone_pos, pickup)
+                dist_delivery = manhattan(pickup, dropoff)
+                dist_to_hub = nearest_hub_distance(dropoff, grid)
+
+                required_soc = e_move * (dist_to_pickup + dist_delivery + dist_to_hub) + battery_reserve
+
+                if soc < required_soc:
+                    mask[action] = 0.0
+
+    # no-op remains available as fallback
     mask[cfg.noop_index] = 1.0
     return mask
 
@@ -139,7 +196,8 @@ class DQNPolicy:
     def __init__(self, cfg: Config, obs_dim: int, action_dim: int, algo: str = "double",
                  lr: float = 5e-4, gamma: float = 0.99, batch_size: int = 64,
                  buffer_size: int = 100_000, tau: float = 0.005, hidden: int = 256,
-                 epsilon_decay: float = 0.9995, safety_threshold: float = 0.35):
+                 epsilon_decay: float = 0.9995, safety_threshold: float = 0.35,
+                 mission_safety: bool = True, battery_reserve: float = 0.15):
         assert algo in {"dqn", "double", "dueling"}
         self.cfg = cfg
         self.algo = algo
@@ -152,6 +210,8 @@ class DQNPolicy:
         self.epsilon_min = 0.05
         self.epsilon_decay = epsilon_decay
         self.safety_threshold = safety_threshold
+        self.mission_safety = mission_safety
+        self.battery_reserve = battery_reserve
         dueling = algo == "dueling"
         self.q_net = QNetwork(obs_dim, action_dim, hidden=hidden, dueling=dueling)
         self.target_net = QNetwork(obs_dim, action_dim, hidden=hidden, dueling=dueling)
@@ -161,7 +221,13 @@ class DQNPolicy:
         self.learn_steps = 0
 
     def act(self, obs: Dict[str, np.ndarray]) -> int:
-        mask = policy_mask(obs, self.cfg, self.safety_threshold)
+        mask = policy_mask(
+            obs,
+            self.cfg,
+            safety_threshold=self.safety_threshold,
+            mission_safety=self.mission_safety,
+            battery_reserve=self.battery_reserve,
+        )
         valid = np.flatnonzero(mask)
         if len(valid) == 0:
             return int(self.cfg.noop_index)
@@ -209,6 +275,8 @@ class DQNPolicy:
             "state_dict": self.q_net.state_dict(),
             "epsilon_decay": self.epsilon_decay,
             "safety_threshold": self.safety_threshold,
+            "mission_safety": self.mission_safety,
+            "battery_reserve": self.battery_reserve,
         }, path)
 
     @classmethod
@@ -221,6 +289,8 @@ class DQNPolicy:
             algo=ckpt.get("algo", "double"),
             epsilon_decay=ckpt.get("epsilon_decay", 0.9995),
             safety_threshold=ckpt.get("safety_threshold", 0.35),
+            mission_safety=ckpt.get("mission_safety", True),
+            battery_reserve=ckpt.get("battery_reserve", 0.15),
         )
         agent.q_net.load_state_dict(ckpt["state_dict"])
         agent.target_net.load_state_dict(agent.q_net.state_dict())
@@ -264,6 +334,8 @@ def make_agent(algo: str, seed: int, args) -> Tuple[DQNPolicy, Config]:
         hidden=args.hidden,
         epsilon_decay=args.epsilon_decay,
         safety_threshold=args.safety_threshold,
+        mission_safety=not args.no_mission_safety,
+        battery_reserve=args.battery_reserve,
     ), cfg
 
 
@@ -292,7 +364,13 @@ def train(args) -> None:
             agent.memory.push(
                 flatten_obs(obs, cfg), action, reward,
                 flatten_obs(next_obs, cfg), done,
-                policy_mask(next_obs, cfg, agent.safety_threshold),
+                policy_mask(
+                    next_obs,
+                    cfg,
+                    safety_threshold=agent.safety_threshold,
+                    mission_safety=agent.mission_safety,
+                    battery_reserve=agent.battery_reserve,
+                ),
             )
             loss = agent.learn()
             if loss is not None:
@@ -361,6 +439,8 @@ def main():
     tr.add_argument("--hidden", type=int, default=256)
     tr.add_argument("--epsilon-decay", type=float, default=0.9995)
     tr.add_argument("--safety-threshold", type=float, default=0.35)
+    tr.add_argument("--battery-reserve", type=float, default=0.15)
+    tr.add_argument("--no-mission-safety", action="store_true")
     tr.add_argument("--print-every", type=int, default=10)
     tr.add_argument("--out", default=None)
     ev = sub.add_parser("eval", parents=[common])
