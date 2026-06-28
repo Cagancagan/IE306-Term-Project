@@ -18,9 +18,14 @@ with open("../../configs/dqn.yaml", "r") as f:
 
 env = gym.make(config["env_id"])
 obs_sample, info_sample = env.reset(seed=42)
-state_key = [k for k in obs_sample.keys() if k != "action_mask"][0]
-config["state_key"] = state_key
-config["obs_dim"] = int(np.prod(np.array(obs_sample[state_key]).shape))
+def flatten_obs(obs_dict):
+    drones = np.array(obs_dict["drones"]).flatten()
+    orders = np.array(obs_dict["orders"]).flatten()
+    time = np.array(obs_dict["time"]).flatten()
+    return np.concatenate([drones, orders, time])
+
+sample_state = flatten_obs(obs_sample)
+config["obs_dim"] = len(sample_state)
 config["action_dim"] = env.action_space.n
 
 def evaluate_agent(agent_name, agent, weight_path):

@@ -46,13 +46,25 @@ class DuelingDQNAgent:
         self.epsilon, self.epsilon_min, self.epsilon_decay = 1.0, 0.05, 0.998
 
     def act(self, obs):
-        state, action_mask = np.array(obs[self.state_key]).flatten(), obs["action_mask"]
+        # Yeni görme yeteneği: Verileri birleştiriyoruz
+        drones = np.array(obs["drones"]).flatten()
+        orders = np.array(obs["orders"]).flatten()
+        time = np.array(obs["time"]).flatten()
+        state = np.concatenate([drones, orders, time])
+
+        action_mask = obs["action_mask"]
         valid_actions = np.where(action_mask == 1)[0]
-        if len(valid_actions) == 0: return 0
-        if random.random() < self.epsilon: return random.choice(valid_actions)
+
+        if len(valid_actions) == 0:
+            return 0
+
+        if random.random() < self.epsilon:
+            return random.choice(valid_actions)
+
         state_t = torch.FloatTensor(state).unsqueeze(0)
         with torch.no_grad():
             q_values = self.q_net(state_t).squeeze(0).numpy()
+
         q_values[action_mask == 0] = -np.inf
         return int(np.argmax(q_values))
 

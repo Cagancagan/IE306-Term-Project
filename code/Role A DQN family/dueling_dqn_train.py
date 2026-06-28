@@ -10,14 +10,19 @@ import csv
 import numpy as np
 from dueling_dqn_agent import DuelingDQNAgent
 
+def flatten_obs(obs_dict):
+    drones = np.array(obs_dict["drones"]).flatten()
+    orders = np.array(obs_dict["orders"]).flatten()
+    time = np.array(obs_dict["time"]).flatten()
+    return np.concatenate([drones, orders, time])
+
 with open("../../configs/duel_dqn.yaml", "r") as f: config = yaml.safe_load(f)
 my_seed = int(sys.argv[1]) if len(sys.argv) > 1 else 42
 env = gym.make(config["env_id"])
 obs_sample, info_sample = env.reset(seed=my_seed)
 
-state_key = [k for k in obs_sample.keys() if k != "action_mask"][0]
-config["state_key"] = state_key
-config["obs_dim"] = int(np.prod(np.array(obs_sample[state_key]).shape))
+sample_state = flatten_obs(obs_sample)
+config["obs_dim"] = len(sample_state)
 config["action_dim"] = env.action_space.n
 
 agent = DuelingDQNAgent(config)
@@ -33,7 +38,8 @@ for episode in range(config["total_episodes"]):
         next_obs, reward, terminated, truncated, info = env.step(action)
         done = terminated or truncated
 
-        state, next_state = np.array(obs[state_key]).flatten(), np.array(next_obs[state_key]).flatten()
+        state = flatten_obs(obs)
+        next_state = flatten_obs(next_obs)
         agent.memory.push(state, action, reward, next_state, done)
         agent.learn()
 
