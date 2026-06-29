@@ -1,0 +1,75 @@
+{
+  "config": "configs/eval_standard.yaml",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "multi_agent": {
+    "ma_random": {
+      "episode_return": 314.5394,
+      "steps": 500.0,
+      "lost_drones": 0.0,
+      "pending_orders": 13.6,
+      "avg_soc": 0.8954999999999999
+    },
+    "ma_heuristic": {
+      "episode_return": 1707.9688000000103,
+      "steps": 500.0,
+      "lost_drones": 1.0,
+      "pending_orders": 11.4,
+      "avg_soc": 0.5194249999999996
+    },
+    "ma_learned": {
+      "episode_return": -1752.7636000000016,
+      "steps": 500.0,
+      "lost_drones": 0.0,
+      "pending_orders": 17.2,
+      "avg_soc": 0.951825
+    }
+  },
+  "centralized_reference": {
+    "central_random": {
+      "cost_per_order": 18.497899561688307,
+      "success_rate": 0.6588838134634292,
+      "ontime_rate": 0.8973051948051948,
+      "mean_delivery_time": 37.639190115440115,
+      "energy_per_order": 0.30736619227993683,
+      "depletion_events": 8.0,
+      "idle_pct": 0.06810343954254655,
+      "charger_utilization": 0.06437411016397827,
+      "n_delivered": 40.0,
+      "n_dropped": 21.2,
+      "episode_return": -153.92940000000004
+    },
+    "central_greedy_nearest": {
+      "cost_per_order": 4.308961333323208,
+      "success_rate": 0.8582445491198352,
+      "ontime_rate": 0.9060064792326278,
+      "mean_delivery_time": 34.00210503915734,
+      "energy_per_order": 0.2162384867334302,
+      "depletion_events": 3.6,
+      "idle_pct": 0.06269225402347771,
+      "charger_utilization": 0.12920818432988307,
+      "n_delivered": 120.0,
+      "n_dropped": 19.8,
+      "episode_return": 1230.7156000000007
+    },
+    "central_milp_rolling": {
+      "cost_per_order": 4.281738112644461,
+      "success_rate": 0.8534614044958871,
+      "ontime_rate": 0.9100028570099232,
+      "mean_delivery_time": 32.83107529408796,
+      "energy_per_order": 0.21437429475032932,
+      "depletion_events": 3.2,
+      "idle_pct": 0.06471895688044318,
+      "charger_utilization": 0.1316822206444228,
+      "n_delivered": 120.6,
+      "n_dropped": 20.6,
+      "episode_return": 1251.9030000000007
+    }
+  },
+  "note": "DroneDispatchMA-v0 uses decentralized per-drone actions and exposes different metrics from the centralized dispatcher. The comparison is therefore qualitative: centralized policies are shown as reference scores on DroneDispatch-v0, while IDQN/heuristic are evaluated end-to-end on DroneDispatchMA-v0."
+}
