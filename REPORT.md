@@ -74,7 +74,7 @@ The first Role A attempts failed mainly because of environment-integration and a
 
 The simulator action mask tells us whether an action is legally valid. However, a legal assignment may still be unsafe if a drone cannot complete the mission and reach a charger. We therefore added a policy-level safety mask that blocks assignments when the drone does not appear to have enough battery for:
 
-```text
+```text id="f50mkw"
 drone → pickup → dropoff → nearest hub/charger
 ```
 
@@ -82,7 +82,7 @@ plus a reserve margin.
 
 Final safety parameters:
 
-```text
+```text id="dz16cb"
 safety_threshold = 0.30
 battery_reserve = 0.15
 epsilon_decay = 0.9995
@@ -94,7 +94,7 @@ This was the key turning point for Role A. Before the safety mask, learned DQN v
 
 Each method was trained with 3 random seeds.
 
-```text
+```text id="6lqsbn"
 train seeds: 0, 1, 2
 training episodes per seed: 50
 evaluation seeds: 0–9
@@ -102,13 +102,13 @@ evaluation seeds: 0–9
 
 Training command template:
 
-```bash
+```bash id="i7iy98"
 python "code/Role A DQN family/role_a_dqn_fixed.py" train --algo <algo> --seed <seed> --episodes 50 --print-every 10 --safety-threshold 0.30 --battery-reserve 0.15 --epsilon-decay 0.9995
 ```
 
 Evaluation command template:
 
-```bash
+```bash id="rbybng"
 python "code/Role A DQN family/role_a_dqn_fixed.py" eval --algo <algo> --weights weights/role_a_<algo>_seed<seed>.pt --seeds 0,1,2,3,4,5,6,7,8,9
 ```
 
@@ -150,13 +150,13 @@ The target-network version achieved slightly lower cost per order and substantia
 
 Final Role A model:
 
-```text
+```text id="99j1wg"
 Dueling DQN with distance-aware battery safety mask
 ```
 
 Recommended final weight:
 
-```text
+```text id="idu2k4"
 weights/role_a_dueling_seed2.pt
 ```
 
@@ -218,7 +218,7 @@ Role B development included:
 
 The battery-aware feature ablation did not improve held-out performance, so the simpler eight-feature pairwise representation was retained.
 
-For the continuous-control sub-environment `DroneControl-v0`, a DDPG implementation was created with an actor, critic, replay buffer, target actor/critic, Gaussian exploration noise, and soft target updates. The initial DDPG policy did not generalize reliably.
+A DDPG implementation was also created for `DroneControl-v0`. It included an actor network, critic network, replay buffer, target networks, Gaussian exploration noise, and soft target updates. The initial DDPG policy did not generalize reliably.
 
 | Metric | Result |
 |---|---:|
@@ -226,7 +226,7 @@ For the continuous-control sub-environment `DroneControl-v0`, a DDPG implementat
 | Reward standard deviation | 933.14 |
 | Success rate | 0.00 |
 
-Diagnostic rollouts showed unstable heading correction and frequent battery depletion before reaching the target. This is reported as a failure-analysis result rather than a successful final controller.
+Diagnostic rollouts showed unstable heading correction and frequent battery depletion before reaching the target. This was documented as a failure-analysis result.
 
 ---
 
@@ -234,50 +234,53 @@ Diagnostic rollouts showed unstable heading correction and frequent battery depl
 
 ### 5.1 Method
 
-Role C implemented a short-horizon look-ahead dispatch policy for the centralized drone-delivery environment. The planner evaluates feasible drone-order assignments using three main signals:
+Role C implements a short-horizon look-ahead dispatch policy for the centralized drone-delivery environment.
 
-1. **Pickup distance:** shorter travel distance to pickup is preferred.
-2. **Order urgency:** orders closer to their SLA limit receive higher priority.
-3. **Battery risk:** assignments likely to leave a drone with critically low state of charge are penalized.
+The policy evaluates feasible drone-to-order assignments using three signals:
 
-In addition to immediate assignment quality, the planner estimates the effect of assigning a drone on future fleet capacity. This approximation considers expected incoming demand, remaining idle drones, and fleet battery levels.
+1. **Pickup distance:** assignments with shorter travel distance to the pickup point are preferred.
+2. **Order urgency:** orders that are closer to the SLA limit receive higher priority.
+3. **Battery risk:** assignments that are likely to leave a drone with critically low state of charge are penalized.
 
-The final Role C method is best understood as a lightweight short-horizon look-ahead planner rather than a full MCTS implementation or exact simulator rollout.
+In addition to the immediate assignment score, the planner estimates the effect of assigning a drone on future fleet capacity. This estimate considers the expected incoming demand, the number of remaining idle drones, and the battery levels of the available fleet.
+
+The final selected method is an approximate short-horizon look-ahead planner. It is not presented as full MCTS or an exact simulator rollout. Instead, it uses a lightweight future-capacity estimate to make dispatch decisions while remaining computationally efficient.
 
 ### 5.2 Experimental Setup
 
-Final configuration:
+The final Role C policy was evaluated using the standard evaluation configuration and ten random seeds:
 
-```yaml
+```text id="v5yy2d"
+0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+```
+
+The baseline policy was `greedy_nearest`.
+
+The final Role C configuration was:
+
+```yaml id="o4tx1a"
 planning_depth: 1
 forecast_weight: 1.0
 ```
 
-Evaluation seeds:
-
-```text
-0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-```
-
-Primary baseline: `greedy_nearest`.
+The primary evaluation metric was mean cost per delivered order. Additional metrics included the number of delivered and dropped orders and the on-time delivery rate.
 
 ### 5.3 Main Results
 
 | Method | Cost per order | Delivered orders | Dropped orders | On-time rate |
 |---|---:|---:|---:|---:|
 | Greedy nearest | 3.611 ± 1.129 | 121.80 ± 10.60 | 16.30 ± 5.95 | 0.924 ± 0.028 |
-| Role C look-ahead | **3.484 ± 1.860** | 123.00 ± 13.99 | 16.00 ± 7.86 | 0.929 ± 0.019 |
+| Role C look-ahead | 3.484 ± 1.860 | 123.00 ± 13.99 | 16.00 ± 7.86 | 0.929 ± 0.019 |
 
 The Role C planner reduced mean cost per delivered order from 3.611 to 3.484, an approximate 3.5% mean improvement over greedy nearest. It also increased average delivered orders, slightly reduced dropped orders, and improved on-time rate. The relatively large standard deviation means this should be interpreted as a mean improvement, not a statistically conclusive dominance claim.
 
-If the figure files are present, the Role C cost comparison and depth ablation can be regenerated and viewed from:
+![Role C versus greedy nearest](figures/role_c_vs_greedy_cost.png)
 
-```text
-figures/role_c_vs_greedy_cost.png
-figures/role_c_depth_ablation.png
-```
+Figure 1. Mean cost per delivered order over ten evaluation seeds. Error bars show one standard deviation.
 
 ### 5.4 Planning-Depth Ablation
+
+To study the planning horizon, the planner was evaluated with depths 1, 2, and 3 over seeds `0, 1, 2`.
 
 | Planning depth | Cost per order |
 |---|---:|
@@ -287,13 +290,9 @@ figures/role_c_depth_ablation.png
 
 Planning depth 1 performed best. Increasing depth worsened results in this implementation because the future fleet-capacity estimate is approximate; deeper planning accumulated more approximation error and produced overly conservative decisions.
 
-### 5.5 Reproducibility
+![Planning-depth ablation](figures/role_c_depth_ablation.png)
 
-```powershell
-python run_rollout.py --planner-config configs/rollout_role_c.yaml
-python -m code.summarize_role_c
-python -m code.plot_role_c_results
-```
+Figure 2. Planning-depth ablation over three evaluation seeds. Error bars show one standard deviation.
 
 ---
 
@@ -301,58 +300,58 @@ python -m code.plot_role_c_results
 
 ### 6.1 Dataset
 
-The offline RL component used a mixed-quality static dataset generated from multiple behavior policies:
+The offline RL dataset was generated as a mixed-quality static dataset. It combined trajectories from several behavior policies:
 
 - random
 - greedy
 - noisy greedy
-- Role A final policy
+- Role A policy
 - Role B policy
 - Role C policy
 
-Dataset summary:
+The generated dataset contained:
 
-| Quantity | Value |
+| Dataset property | Value |
 |---|---:|
 | Transitions | 30,000 |
 | Episodes | 214 |
+| Mean episode return | 926.84 |
 | Observation dimension | 581 |
 | Action dimension | 169 |
-| Mean behavior episode return | 926.8404 |
 
-The dataset was saved as:
+The dataset was saved to:
 
-```text
+```text id="gmtgdo"
 logs/offline_dataset.npz
 ```
 
-### 6.2 Methods
+### 6.2 Offline Methods
 
-We compared three offline methods:
+We implemented three offline methods:
 
-1. **Behavioral cloning (BC):** supervised cross-entropy training to imitate dataset actions.
-2. **Naive offline DQN:** offline Bellman backups without correcting distribution shift.
-3. **CQL-style conservative DQN:** Bellman loss plus a conservative penalty of the form:
-   ```text
-   alpha * (logsumexp(Q(s, ·)) - Q(s, a_dataset))
-   ```
+1. **Behavioral cloning:** supervised learning from logged actions.
+2. **Naive offline DQN:** Q-learning on the static dataset without environment interaction.
+3. **CQL-style DQN:** conservative Q-learning with an additional penalty term.
 
-Training setup:
+The CQL-style loss was:
 
-| Quantity | Value |
-|---|---:|
-| Train steps | 2500 |
-| Batch size | 128 |
-| CQL alpha | 0.2 |
-| Final BC loss | 1.4290 |
-| Final naive DQN loss | 19.5918 |
-| Final CQL loss | 8.5895 |
+```text id="z7si06"
+Bellman loss + α [logsumexp(Q(s, ·)) - Q(s, a_dataset)]
+```
 
-### 6.3 Offline RL Results
+with:
+
+```text id="88owxx"
+alpha = 0.2
+train_steps = 2500
+batch_size = 128
+```
+
+### 6.3 Offline Results
 
 Evaluation seeds: `0–4`.
 
-| Offline method | Cost/order | Success rate | On-time rate | Depletion events | Delivered | Dropped | Episode return |
+| Offline policy | Cost/order | Success rate | On-time rate | Depletion events | Delivered | Dropped | Episode return |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Behavioral cloning | 10.6153 | 0.6570 | 0.9091 | 3.2 | 90.4 | 47.4 | 408.70 |
 | Naive offline DQN | 645.2721 | 0.0239 | 0.9333 | 1.0 | 3.2 | 131.8 | -1989.51 |
@@ -480,51 +479,51 @@ The shared-parameter IDQN implementation ran end-to-end but failed to converge. 
 
 ### 11.1 Installation
 
-```bash
+```bash id="lj3hdx"
 python -m pip install -r requirements.txt
 python -m pip install -e .
 ```
 
 ### 11.2 Tests
 
-```bash
+```bash id="k8fmj7"
 python -m pytest tests -q
 ```
 
 ### 11.3 Main Result Table
 
-```bash
+```bash id="ltrvzj"
 python run_all.py --config configs/eval_standard.yaml --seeds 0,1,2,3,4,5,6,7,8,9
 ```
 
 or, on Unix/Git Bash:
 
-```bash
+```bash id="jo6pmz"
 bash reproduce.sh configs/eval_standard.yaml 0,1,2,3,4,5,6,7,8,9
 ```
 
 ### 11.4 Role A
 
-```bash
+```bash id="ci5y03"
 python "code/Role A DQN family/eval_role_a.py" --seeds 0,1,2,3,4,5,6,7,8,9 --include-ablation
 ```
 
 ### 11.5 Offline RL
 
-```bash
+```bash id="sqeryb"
 python code/offline_rl_experiment.py --config configs/eval_standard.yaml --min-transitions 30000 --train-steps 2500 --eval-seeds 0,1,2,3,4
 ```
 
 ### 11.6 Multi-Agent
 
-```bash
+```bash id="83vi5w"
 python code/train_idqn_ma.py train --episodes 100 --print-every 10 --weights-path weights/idqn_ma.pt --log-path logs/idqn_ma_training.csv
 python code/train_idqn_ma.py eval --weights weights/idqn_ma.pt --seeds 0,1,2,3,4 --results-path logs/multi_agent_results.json
 ```
 
 ### 11.7 Role C
 
-```powershell
+```powershell id="sifgwl"
 python run_rollout.py --planner-config configs/rollout_role_c.yaml
 python -m code.summarize_role_c
 python -m code.plot_role_c_results
