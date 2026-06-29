@@ -147,3 +147,6 @@ Reason:
 The first DQN attempts failed mainly because drones depleted their batteries. The environment action mask only filters illegal actions, not unsafe-but-legal assignments. After adding a conservative distance-aware battery safety mask, the agent avoided unsafe assignments, maintained zero depletion events, and learned to outperform the greedy and MILP baselines.
 
 This suggests that in this simulator, safe action feasibility and battery-aware dispatching were more important than simply increasing network complexity.
+
+Role A standalone evaluation command:
+python "code/Role A DQN family/eval_role_a.py" --seeds 0,1,2,3,4,5,6,7,8,9 --include-ablation
